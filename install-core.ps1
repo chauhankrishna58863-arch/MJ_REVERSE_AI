@@ -6,7 +6,18 @@
 # ================================================================
 
 $ErrorActionPreference = "Continue"
-$USB_Drive = "C:\Users\krishna\StudioProjects\PulseShift\MJ-Reverse-AI"
+
+# ── Auto-detect install location ─────────────────────────────────────────────
+# $PSScriptRoot is always the folder where this .ps1 file lives.
+# Works on any USB drive (E:\, F:\, G:\...), any local folder, any PC.
+# No manual editing needed!
+if ($PSScriptRoot -and (Test-Path $PSScriptRoot)) {
+    $USB_Drive = $PSScriptRoot
+} else {
+    # Fallback: use the current working directory
+    $USB_Drive = (Get-Location).Path
+}
+Write-Host "  Install location auto-detected: $USB_Drive" -ForegroundColor DarkGray
 
 # -----------------------------------------------------------------
 # MODEL CATALOG (All presets use Q4_K_M quantization from bartowski)

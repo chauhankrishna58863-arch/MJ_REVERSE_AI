@@ -1,232 +1,207 @@
 @echo off
 title MJ Reverse AI - Offline AI Agent
 color 0B
+setlocal EnableDelayedExpansion
 
 echo.
 echo =====================================================
-echo       MJ REVERSE AI - Offline AI Pendrive Agent
+echo       MJ REVERSE AI - Offline AI Agent
 echo =====================================================
 echo.
 
 REM ============================================================
-REM  PATH RESOLUTION - Automatically detect local or pendrive paths
+REM  PATHS  - Everything is relative to THIS script's folder
 REM ============================================================
+set "BASE=%~dp0"
+REM Remove trailing backslash from BASE
+if "%BASE:~-1%"=="\" set "BASE=%BASE:~0,-1%"
 
-for %%I in ("%~dp0..") do set "PARENT_DIR=%%~fI"
-for %%I in ("%~dp0..\..") do set "GRANDPARENT_DIR=%%~fI"
+set "APPS_DIR=%BASE%\apps\python"
+set "PYTHON=%APPS_DIR%\python.exe"
+set "PIP=%APPS_DIR%\Scripts\pip.exe"
+set "SITE_PKG=%APPS_DIR%\Lib\site-packages"
+set "MODELS_DIR=%BASE%\models"
+set "LAUNCHER=%BASE%\launcher.py"
+set "TEMP_SETUP=%BASE%\installer_data"
 
-REM 1. Detect Python Executable
-set "PENDRIVE_PYTHON="
-
-REM A. Try local or parent/grandparent apps folder (portable mode)
-if exist "%~dp0apps\python\python.exe" (
-    set "PENDRIVE_PYTHON=%~dp0apps\python\python.exe"
-) else if exist "%PARENT_DIR%\apps\python\python.exe" (
-    set "PENDRIVE_PYTHON=%PARENT_DIR%\apps\python\python.exe"
-) else if exist "%GRANDPARENT_DIR%\apps\python\python.exe" (
-    set "PENDRIVE_PYTHON=%GRANDPARENT_DIR%\apps\python\python.exe"
-) else if exist "A:\OllamaData\apps\python\python.exe" (
-    set "PENDRIVE_PYTHON=A:\OllamaData\apps\python\python.exe"
-)
-
-REM B. Try system python from PATH
-if not defined PENDRIVE_PYTHON (
-    where python >nul 2>&1
-    if %errorlevel% equ 0 (
-        for /f "delims=" %%I in ('where python') do (
-            set "PENDRIVE_PYTHON=%%I"
-            goto :PYTHON_DETECTED
-        )
-    )
-)
-
-REM C. Try specific known user python path
-if not defined PENDRIVE_PYTHON (
-    if exist "C:\Users\krishna\AppData\Local\Programs\Python\Python311\python.exe" (
-        set "PENDRIVE_PYTHON=C:\Users\krishna\AppData\Local\Programs\Python\Python311\python.exe"
-    )
-)
-:PYTHON_DETECTED
-
-REM 2. Detect Pip Executable
-set "PENDRIVE_PIP="
-if exist "%~dp0apps\python\Scripts\pip.exe" (
-    set "PENDRIVE_PIP=%~dp0apps\python\Scripts\pip.exe"
-) else if exist "%PARENT_DIR%\apps\python\Scripts\pip.exe" (
-    set "PENDRIVE_PIP=%PARENT_DIR%\apps\python\Scripts\pip.exe"
-) else if exist "%GRANDPARENT_DIR%\apps\python\Scripts\pip.exe" (
-    set "PENDRIVE_PIP=%GRANDPARENT_DIR%\apps\python\Scripts\pip.exe"
-) else if exist "A:\OllamaData\apps\python\Scripts\pip.exe" (
-    set "PENDRIVE_PIP=A:\OllamaData\apps\python\Scripts\pip.exe"
-)
-
-if not defined PENDRIVE_PIP (
-    where pip >nul 2>&1
-    if %errorlevel% equ 0 (
-        for /f "delims=" %%I in ('where pip') do (
-            set "PENDRIVE_PIP=%%I"
-            goto :PIP_DETECTED
-        )
-    )
-)
-
-if not defined PENDRIVE_PIP (
-    if exist "C:\Users\krishna\AppData\Local\Programs\Python\Python311\Scripts\pip.exe" (
-        set "PENDRIVE_PIP=C:\Users\krishna\AppData\Local\Programs\Python\Python311\Scripts\pip.exe"
-    )
-)
-:PIP_DETECTED
-
-REM 3. Detect Models Directory
-set "PENDRIVE_MODELS=%~dp0models"
-if not exist "%PENDRIVE_MODELS%" (
-    if exist "%PARENT_DIR%\*.gguf" (
-        set "PENDRIVE_MODELS=%PARENT_DIR%"
-    ) else if exist "%GRANDPARENT_DIR%\models" (
-        set "PENDRIVE_MODELS=%GRANDPARENT_DIR%\models"
-    ) else (
-        set "PENDRIVE_MODELS=A:\OllamaData\models"
-    )
-)
-
-REM 4. Set Target Directory for Dependency Installation
-set "TARGET_DIR="
-if exist "%~dp0apps\python\Lib\site-packages" (
-    set "TARGET_DIR=%~dp0apps\python\Lib\site-packages"
-) else if exist "%PARENT_DIR%\apps\python\Lib\site-packages" (
-    set "TARGET_DIR=%PARENT_DIR%\apps\python\Lib\site-packages"
-) else if exist "%GRANDPARENT_DIR%\apps\python\Lib\site-packages" (
-    set "TARGET_DIR=%GRANDPARENT_DIR%\apps\python\Lib\site-packages"
-) else if exist "A:\OllamaData\apps\python\Lib\site-packages" (
-    set "TARGET_DIR=A:\OllamaData\apps\python\Lib\site-packages"
-)
-
-set LAUNCHER=%~dp0launcher.py
+echo [INFO] Base folder : %BASE%
+echo [INFO] Python path : %PYTHON%
+echo [INFO] Models path : %MODELS_DIR%
+echo.
 
 REM ============================================================
-REM  1. Check Python exists
+REM  STEP 1 - Auto-install Python if missing
 REM ============================================================
-if not exist "%PENDRIVE_PYTHON%" (
-    echo [ERROR] Python interpreter not found in local path or pendrive!
-    echo         Expected at: %~dp0..\apps\python\python.exe
-    echo.
-    echo Please ensure Python 3.10 or 3.11 is installed inside the apps folder.
+if exist "%PYTHON%" (
+    echo [OK]   Python already installed at: %APPS_DIR%
+    goto :PYTHON_READY
+)
+
+echo [SETUP] Python not found. Downloading Python 3.11 installer...
+echo         This only happens once. Please wait...
+echo.
+
+REM Create needed folders
+if not exist "%APPS_DIR%"   mkdir "%APPS_DIR%"
+if not exist "%TEMP_SETUP%" mkdir "%TEMP_SETUP%"
+
+set "PY_INSTALLER=%TEMP_SETUP%\python-3.11.9-amd64.exe"
+
+REM Download Python 3.11.9 installer using PowerShell (built into every Windows)
+powershell -NoProfile -Command ^
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
+     $wc = New-Object System.Net.WebClient; ^
+     $wc.DownloadFile('https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe', '%PY_INSTALLER%')"
+
+if not exist "%PY_INSTALLER%" (
+    echo [ERROR] Failed to download Python installer.
+    echo         Check your internet connection and try again.
     pause
     exit /b 1
 )
 
-echo [OK] Found Python interpreter: %PENDRIVE_PYTHON%
+echo [SETUP] Installing Python 3.11 into: %APPS_DIR%
+echo         (Silent install - this may take 1-2 minutes)
 
-REM ============================================================
-REM  2. Check if pip is available
-REM ============================================================
-if exist "%PENDRIVE_PIP%" goto PIP_READY
+REM Install Python silently into the local apps\python folder
+"%PY_INSTALLER%" /quiet ^
+    InstallAllUsers=0 ^
+    TargetDir="%APPS_DIR%" ^
+    Include_launcher=0 ^
+    Include_test=0 ^
+    Include_doc=0 ^
+    PrependPath=0 ^
+    Shortcuts=0
 
-echo [WARN] pip not found. Attempting to bootstrap pip...
-"%PENDRIVE_PYTHON%" -m ensurepip --upgrade >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ERROR] Could not bootstrap pip. Please install pip manually.
+if not exist "%PYTHON%" (
+    echo [ERROR] Python installation failed!
+    echo         Try running START.bat as Administrator.
     pause
     exit /b 1
 )
-echo [OK] pip bootstrapped successfully.
+
+echo [OK]   Python 3.11 installed successfully!
+echo.
+
+:PYTHON_READY
+
+REM ============================================================
+REM  STEP 2 - Bootstrap pip if missing
+REM ============================================================
+if exist "%PIP%" goto :PIP_READY
+
+echo [SETUP] pip not found. Bootstrapping pip...
+
+REM Try ensurepip first (works if pip is bundled with Python)
+"%PYTHON%" -m ensurepip --upgrade >nul 2>&1
+
+if exist "%PIP%" (
+    echo [OK]   pip bootstrapped via ensurepip.
+    goto :PIP_READY
+)
+
+REM Fallback: download get-pip.py
+set "GETPIP=%TEMP_SETUP%\get-pip.py"
+powershell -NoProfile -Command ^
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
+     $wc = New-Object System.Net.WebClient; ^
+     $wc.DownloadFile('https://bootstrap.pypa.io/get-pip.py', '%GETPIP%')"
+
+if not exist "%GETPIP%" (
+    echo [ERROR] Could not download get-pip.py. Check internet connection.
+    pause
+    exit /b 1
+)
+
+"%PYTHON%" "%GETPIP%" --quiet
+if not exist "%PIP%" (
+    echo [ERROR] pip installation failed.
+    pause
+    exit /b 1
+)
+echo [OK]   pip installed via get-pip.py.
 
 :PIP_READY
+echo [OK]   pip is ready.
 
 REM ============================================================
-REM  3. Check if llama-cpp-python is installed
+REM  STEP 3 - Auto-install llama-cpp-python if missing
 REM ============================================================
-"%PENDRIVE_PYTHON%" -c "import llama_cpp" >nul 2>&1
-if %errorlevel% equ 0 goto LLAMA_READY
-
-echo [WARN] llama-cpp-python is NOT installed in Python environment.
-echo.
-set /p INSTALL="Do you want to install it now? [y/N]: "
-if /i "%INSTALL%" neq "y" goto INSTALL_REFUSED
-
-echo.
-echo [INFO] Installing llama-cpp-python (compatible v0.3.19 CPU wheel)...
-echo        This may take several minutes on first run...
-echo.
-if defined TARGET_DIR (
-    "%PENDRIVE_PYTHON%" -m pip install llama-cpp-python==0.3.19 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu --target "%TARGET_DIR%"
-) else (
-    "%PENDRIVE_PYTHON%" -m pip install llama-cpp-python==0.3.19 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+"%PYTHON%" -c "import llama_cpp" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo [OK]   llama-cpp-python is already installed.
+    goto :LLAMA_READY
 )
-if %errorlevel% neq 0 goto INSTALL_FAILED
 
+echo [SETUP] Installing llama-cpp-python (CPU build)...
+echo         This downloads ~150 MB and only happens once.
+echo         Do NOT close this window!
 echo.
-echo [OK] llama-cpp-python installed successfully!
-goto LLAMA_READY
 
-:INSTALL_FAILED
-echo.
-echo [ERROR] Installation failed.
-echo         Check your internet connection.
-pause
-exit /b 1
+REM Create site-packages folder if it doesn't exist yet
+if not exist "%SITE_PKG%" mkdir "%SITE_PKG%"
 
-:INSTALL_REFUSED
-echo [ERROR] Cannot run without llama-cpp-python. Exiting.
-pause
-exit /b 1
+"%PIP%" install llama-cpp-python==0.3.19 ^
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu ^
+    --target "%SITE_PKG%" ^
+    --quiet
+
+REM Verify the install worked
+"%PYTHON%" -c "import llama_cpp" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] llama-cpp-python installation failed!
+    echo         Check your internet connection.
+    pause
+    exit /b 1
+)
+
+echo [OK]   llama-cpp-python installed successfully!
 
 :LLAMA_READY
-echo [OK] llama-cpp-python is ready.
 
 REM ============================================================
-REM  4. Check Models Folder
+REM  STEP 4 - Ensure models folder exists and has .gguf files
 REM ============================================================
-if not exist "%PENDRIVE_MODELS%" (
-    echo [WARN] Models folder not found at: %PENDRIVE_MODELS%
-    echo        Creating it now...
-    mkdir "%PENDRIVE_MODELS%"
-    echo [OK] Created: %PENDRIVE_MODELS%
-    echo.
-    echo Please place your .gguf model files in:
-    echo   %PENDRIVE_MODELS%
-    echo.
-    pause
-    exit /b 1
+if not exist "%MODELS_DIR%" (
+    echo [INFO] Creating models folder...
+    mkdir "%MODELS_DIR%"
 )
 
-REM Check for at least one .gguf model
-dir /b "%PENDRIVE_MODELS%\*.gguf" >nul 2>&1
+dir /b "%MODELS_DIR%\*.gguf" >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [WARN] No .gguf model files found in:
-    echo        %PENDRIVE_MODELS%
     echo.
-    echo Please copy at least one .gguf model to that folder.
-    echo Recommended models ^(from Hugging Face^):
-    echo   - Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
-    echo   - Llama-3.1-8B-Instruct-Q4_K_M.gguf
-    echo   - DeepSeek-Coder-6.7B-Q4_K_M.gguf
+    echo [WARN] No .gguf model files found in:
+    echo        %MODELS_DIR%
+    echo.
+    echo  Please run install.bat to download a model, OR
+    echo  manually place a .gguf file in the models folder.
     echo.
     pause
     exit /b 1
 )
 
-echo [OK] GGUF models found in: %PENDRIVE_MODELS%
+echo [OK]   GGUF models found in: %MODELS_DIR%
 
 REM ============================================================
-REM  5. Self-healing check: make sure launcher.py exists
+REM  STEP 5 - Verify launcher.py exists
 REM ============================================================
 if not exist "%LAUNCHER%" (
     echo [ERROR] launcher.py not found at: %LAUNCHER%
-    echo         Cannot start MJ Reverse AI.
+    echo         The project files may be incomplete.
     pause
     exit /b 1
 )
 
 REM ============================================================
-REM  6. Launch MJ Reverse AI using pendrive Python
-rem ============================================================
+REM  STEP 6 - Launch MJ Reverse AI
+REM ============================================================
 echo.
-echo [OK] All checks passed. Launching MJ Reverse AI...
+echo [OK]   All checks passed. Starting MJ Reverse AI...
 echo =====================================================
 echo.
 
-"%PENDRIVE_PYTHON%" "%LAUNCHER%"
+"%PYTHON%" "%LAUNCHER%"
 
 echo.
 echo =====================================================
