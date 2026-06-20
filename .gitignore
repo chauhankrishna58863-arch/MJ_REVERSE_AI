@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# GGUF Models (too large for GitHub)
+*.gguf
+
+# Python runtime (user must provide their own or download via setup)
+apps/
+python/
+
+# Installer-generated and runtime data (too large for GitHub)
+models/
+ollama/
+anythingllm/
+anythingllm_data/
+installer_data/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
